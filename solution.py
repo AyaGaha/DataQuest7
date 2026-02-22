@@ -39,13 +39,7 @@ FEATURE_COLUMNS = [
     'Estimated_Annual_Income',
     'Days_Since_Quote',
     'month_sin',
-    'month_cos',
-    'Family_Size',
-    'Risk_Index',
-    'Policy_Engagement',
-    'Time_To_Convert',
-    'Income_Per_Dependent',
-    'Loyalty_Score'
+    'month_cos'
 ]
 
 CATEGORICAL_COLUMNS = [
@@ -86,26 +80,6 @@ def preprocess(df):
     for col in CATEGORICAL_COLUMNS:
         if col in df.columns:
             df[col] = df[col].astype('category')
-
-    # Behavioral feature engineering
-    df['Family_Size'] = (
-        df['Adult_Dependents'] + df['Child_Dependents'] + df['Infant_Dependents']
-    )
-    df['Risk_Index'] = (
-        df['Previous_Claims_Filed'] / (df['Years_Without_Claims'] + 1)
-    )
-    df['Policy_Engagement'] = (
-        df['Policy_Amendments_Count'] + df['Custom_Riders_Requested']
-    )
-    df['Time_To_Convert'] = (
-        df['Days_Since_Quote'] / (df['Underwriting_Processing_Days'] + 1)
-    )
-    df['Income_Per_Dependent'] = (
-        df['Estimated_Annual_Income'] / (df['Family_Size'] + 1)
-    )
-    df['Loyalty_Score'] = (
-        df['Existing_Policyholder'] * df['Years_Without_Claims']
-    )
 
     return df
 

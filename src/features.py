@@ -28,42 +28,6 @@ MONTH_MAP = {
 }
 
 
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add behavioral and risk-based engineered features.
-
-    New columns:
-    - Family_Size: total number of dependents
-    - Risk_Index: claims rate adjusted for claim-free years
-    - Policy_Engagement: policy complexity proxy
-    - Time_To_Convert: quote-to-bind speed ratio
-    - Income_Per_Dependent: financial capacity per dependent
-    - Loyalty_Score: existing policyholder loyalty signal
-    """
-    df = df.copy()
-
-    df['Family_Size'] = (
-        df['Adult_Dependents'] + df['Child_Dependents'] + df['Infant_Dependents']
-    )
-    df['Risk_Index'] = (
-        df['Previous_Claims_Filed'] / (df['Years_Without_Claims'] + 1)
-    )
-    df['Policy_Engagement'] = (
-        df['Policy_Amendments_Count'] + df['Custom_Riders_Requested']
-    )
-    df['Time_To_Convert'] = (
-        df['Days_Since_Quote'] / (df['Underwriting_Processing_Days'] + 1)
-    )
-    df['Income_Per_Dependent'] = (
-        df['Estimated_Annual_Income'] / (df['Family_Size'] + 1)
-    )
-    df['Loyalty_Score'] = (
-        df['Existing_Policyholder'] * df['Years_Without_Claims']
-    )
-
-    return df
-
-
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean and preprocess the input dataframe.
@@ -72,7 +36,6 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     - Drop Employer_ID, Broker_ID, Region_Code
     - Fill missing values
     - Cyclical encoding for Policy_Start_Month
-    - Behavioral feature engineering
     - Convert categorical columns to category dtype
     """
     df = df.copy()
@@ -95,8 +58,6 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         df['month_sin'] = np.sin(2 * np.pi * month_num / 12)
         df['month_cos'] = np.cos(2 * np.pi * month_num / 12)
         df = df.drop(columns=['Policy_Start_Month'])
-
-    df = engineer_features(df)
 
     for col in CATEGORICAL_COLUMNS:
         if col in df.columns:
