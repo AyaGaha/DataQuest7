@@ -88,17 +88,61 @@ def load_model():
     return joblib.load('model.joblib')
 
 
-def predict(df, model):
-    user_ids = df['User_ID'].copy()
+def predict(model, df):
+    """
+    Predict coverage bundle for users based on input DataFrame.
     
-    X = df[FEATURE_COLUMNS]
-    
-    preds = model.predict(X)
-    
-    return pd.DataFrame({
-        'User_ID': user_ids,
-        'Purchased_Coverage_Bundle': preds.astype(int)
-    })
+    Args:
+        model: Trained LGBMClassifier
+        df: pandas DataFrame with 'User_ID' and feature columns
+        
+    Returns:
+        Dictionary with 'User_ID' and 'recommended_bundle' keys
+        
+    Raises:
+        ValueError: If prediction fails with a readable error message
+    """
+    try:
+        # Make a copy to avoid modifying the original DataFrame
+        df_work = df.copy()
+        
+        # Ensure 'User_ID' column exists
+        if 'User_ID' not in df_work.columns:
+            raise ValueError("The input DataFrame must contain a 'User_ID' column.")
+        
+        # Extract 'User_ID' before processing features
+        user_ids = df_work['User_ID'].copy()
+        
+        # Get the list of features the model expects
+        expected_features = list(model.feature_names_in_) if hasattr(model, 'feature_names_in_') else FEATURE_COLUMNS
+        
+        # Handle missing features by filling with default values
+        for feature in expected_features:
+            if feature not in df_work.columns:
+                # Determine the default value based on feature type
+                if feature in CATEGORICAL_COLUMNS:
+                    df_work[feature] = 'Unknown'
+                else:
+                    df_work[feature] = 0
+        
+        # Select only the expected features for prediction
+        X = df_work[expected_features].copy()
+        
+        # Make predictions
+        y_pred = model.predict(X)
+        
+        # Convert predictions to integers and return as dictionary
+        return {
+            "User_ID": user_ids.tolist(),
+            "recommended_bundle": y_pred.astype(int).tolist()
+        }
+        
+    except ValueError as ve:
+        # Re-raise ValueError with the original message
+        raise ValueError(str(ve))
+    except Exception as e:
+        # Catch all other exceptions and provide a readable error message
+        raise ValueError(f"An error occurred during prediction: {type(e).__name__}: {str(e)}")
 
 
 # ----------------------------------------------------------------
@@ -120,7 +164,7 @@ def run(df) -> tuple[float, float, float]:
     # Get the predictions and time taken:
     start = time.perf_counter()
     predictions = predict(
-        df_processed, model
+        model, df_processed
     )  # NOTE: Don't call the `preprocess` function here.
 
     duration = time.perf_counter() - start

@@ -150,9 +150,10 @@ def train_model(train_path: str, model_output_path: str = 'model.joblib') -> lgb
 
     print(f"\nFinal model feature names ({len(final_model.feature_name_)}):\n{final_model.feature_name_}")
 
-    joblib.dump(final_model, model_output_path)
-    size_mb = os.path.getsize(model_output_path) / 1024**2
-    print(f"\nModel saved to: {model_output_path}  ({size_mb:.2f} MB)")
+    # Save the trained model to the project root directory
+    model_save_path = os.path.join(project_root, "model.joblib")
+    joblib.dump(final_model, model_save_path)
+    print(f"\nTrained model saved successfully to: {model_save_path}")
 
     return final_model
 
