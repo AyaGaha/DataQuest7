@@ -78,27 +78,75 @@ export function ResultPanel({ formData, onClose }: ResultPanelProps) {
     }
   };
 
-  const bundle = getBundleRecommendation();
+  const [bundle, setBundle] = useState(() => getBundleRecommendation());
+
+  // Map model class 0-7 to one of the 4 UI bundles using form context
+  const getBundleForModelId = (modelId: number) => {
+    const s = formData.vehicles > 1 ? 's' : '';
+    const v = formData.vehicles;
+    if (modelId >= 6)
+      return { id: 4, name: "Premium Family Bundle", coverages: [
+        { icon: Home,   label: "Home Insurance",     value: "$350K coverage" },
+        { icon: Car,    label: "Auto Insurance",      value: "2 vehicles" },
+        { icon: Heart,  label: "Life Insurance",      value: "$500K policy" },
+        { icon: Shield, label: "Umbrella Policy",     value: "$1M liability" },
+      ], estimatedSavings: "32%", monthlyPremium: 487 };
+    if (modelId >= 4)
+      return { id: 3, name: "Homeowner Plus Bundle", coverages: [
+        { icon: Home,   label: "Home Insurance",     value: "$350K coverage" },
+        { icon: Car,    label: "Auto Insurance",      value: `${v} vehicle${s}` },
+        { icon: Shield, label: "Personal Liability",  value: "$500K coverage" },
+      ], estimatedSavings: "24%", monthlyPremium: 358 };
+    if (modelId >= 2)
+      return { id: 2, name: "Essential Family Bundle", coverages: [
+        { icon: Car,    label: "Auto Insurance",      value: `${v} vehicle${s}` },
+        { icon: Heart,  label: "Life Insurance",      value: "$250K policy" },
+        { icon: Users,  label: "Health Rider",        value: "Family coverage" },
+      ], estimatedSavings: "18%", monthlyPremium: 245 };
+    return { id: 1, name: "Young Professional Bundle", coverages: [
+      { icon: Car,    label: "Auto Insurance",        value: "Standard coverage" },
+      { icon: Shield, label: "Renters Insurance",     value: "$50K personal property" },
+      { icon: Heart,  label: "Life Insurance",        value: "$100K policy" },
+    ], estimatedSavings: "15%", monthlyPremium: 178 };
+  };
+
+  const animateConfidence = () => {
+    const targetScore = calculateConfidence();
+    let current = 0;
+    const increment = targetScore / 50;
+    const scoreTimer = setInterval(() => {
+      current += increment;
+      if (current >= targetScore) {
+        current = targetScore;
+        clearInterval(scoreTimer);
+      }
+      setConfidenceScore(Math.round(current));
+    }, 20);
+  };
 
   useEffect(() => {
-    // Simulate AI processing
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-      // Animate confidence score
-      const targetScore = calculateConfidence();
-      let current = 0;
-      const increment = targetScore / 50;
-      const scoreTimer = setInterval(() => {
-        current += increment;
-        if (current >= targetScore) {
-          current = targetScore;
-          clearInterval(scoreTimer);
-        }
-        setConfidenceScore(Math.round(current));
-      }, 20);
-    }, 2000);
+    let alive = true;
 
-    return () => clearTimeout(timer);
+    fetch("http://localhost:8000/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(formData),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!alive) return;
+        if (typeof data.bundle_id === "number") {
+          setBundle(getBundleForModelId(data.bundle_id));
+        }
+      })
+      .catch(() => { /* keep form-based fallback already in state */ })
+      .finally(() => {
+        if (!alive) return;
+        setIsLoading(false);
+        animateConfidence();
+      });
+
+    return () => { alive = false; };
   }, [formData]);
 
   return (
