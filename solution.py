@@ -9,78 +9,122 @@
 # ----------------------------------------------------------------
 
 
-# Import necessary libraries here
 import pandas as pd
+import numpy as np
 import joblib
-from src.features import clean_data
+
+
+FEATURE_COLUMNS = [
+    'Policy_Cancelled_Post_Purchase',
+    'Policy_Start_Year',
+    'Policy_Start_Week',
+    'Policy_Start_Day',
+    'Grace_Period_Extensions',
+    'Previous_Policy_Duration_Months',
+    'Adult_Dependents',
+    'Child_Dependents',
+    'Infant_Dependents',
+    'Existing_Policyholder',
+    'Previous_Claims_Filed',
+    'Years_Without_Claims',
+    'Policy_Amendments_Count',
+    'Underwriting_Processing_Days',
+    'Vehicles_on_Policy',
+    'Custom_Riders_Requested',
+    'Broker_Agency_Type',
+    'Deductible_Tier',
+    'Acquisition_Channel',
+    'Payment_Schedule',
+    'Employment_Status',
+    'Estimated_Annual_Income',
+    'Days_Since_Quote',
+    'month_sin',
+    'month_cos',
+    'Family_Size',
+    'Risk_Index',
+    'Policy_Engagement',
+    'Time_To_Convert',
+    'Income_Per_Dependent',
+    'Loyalty_Score'
+]
+
+CATEGORICAL_COLUMNS = [
+    'Broker_Agency_Type',
+    'Deductible_Tier',
+    'Acquisition_Channel',
+    'Payment_Schedule',
+    'Employment_Status'
+]
+
+MONTH_MAP = {
+    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4,
+    'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8,
+    'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+}
 
 
 def preprocess(df):
-    """
-    Preprocess the input dataframe for prediction.
-    
-    This function:
-    - Calls clean_data to handle missing values and categorical encoding
-    - Drops target column if present (for training data passed during inference)
-    - Keeps User_ID for final prediction output
-    
-    Args:
-        df: Raw input pandas DataFrame
-        
-    Returns:
-        Preprocessed pandas DataFrame ready for model inference
-    """
-    # Clean the data using the shared cleaning function
-    df_clean = clean_data(df)
-    
-    # Drop target column if it exists (handles case where train data is passed)
-    if 'Purchased_Coverage_Bundle' in df_clean.columns:
-        df_clean = df_clean.drop(columns=['Purchased_Coverage_Bundle'])
-    
-    return df_clean
+    df = df.copy()
+
+    for col in ['Employer_ID', 'Broker_ID', 'Region_Code']:
+        if col in df.columns:
+            df = df.drop(columns=[col])
+
+    if 'Purchased_Coverage_Bundle' in df.columns:
+        df = df.drop(columns=['Purchased_Coverage_Bundle'])
+
+    df['Child_Dependents'] = df['Child_Dependents'].fillna(0)
+    df['Deductible_Tier'] = df['Deductible_Tier'].fillna('Unknown')
+    df['Acquisition_Channel'] = df['Acquisition_Channel'].fillna('Unknown')
+
+    if 'Policy_Start_Month' in df.columns:
+        month_num = df['Policy_Start_Month'].map(MONTH_MAP).fillna(1)
+        df['month_sin'] = np.sin(2 * np.pi * month_num / 12)
+        df['month_cos'] = np.cos(2 * np.pi * month_num / 12)
+        df = df.drop(columns=['Policy_Start_Month'])
+
+    for col in CATEGORICAL_COLUMNS:
+        if col in df.columns:
+            df[col] = df[col].astype('category')
+
+    # Behavioral feature engineering
+    df['Family_Size'] = (
+        df['Adult_Dependents'] + df['Child_Dependents'] + df['Infant_Dependents']
+    )
+    df['Risk_Index'] = (
+        df['Previous_Claims_Filed'] / (df['Years_Without_Claims'] + 1)
+    )
+    df['Policy_Engagement'] = (
+        df['Policy_Amendments_Count'] + df['Custom_Riders_Requested']
+    )
+    df['Time_To_Convert'] = (
+        df['Days_Since_Quote'] / (df['Underwriting_Processing_Days'] + 1)
+    )
+    df['Income_Per_Dependent'] = (
+        df['Estimated_Annual_Income'] / (df['Family_Size'] + 1)
+    )
+    df['Loyalty_Score'] = (
+        df['Existing_Policyholder'] * df['Years_Without_Claims']
+    )
+
+    return df
 
 
 def load_model():
-    """
-    Load the trained model from disk.
-    
-    Returns:
-        Trained LightGBM model object
-    """
-    model = joblib.load('model.joblib')
-    return model
+    return joblib.load('model.joblib')
 
 
 def predict(df, model):
-    """
-    Generate predictions using the trained model.
-    
-    Args:
-        df: Preprocessed pandas DataFrame (output of preprocess function)
-        model: Trained model object (output of load_model function)
-        
-    Returns:
-        pandas DataFrame with exactly two columns:
-            - User_ID: User identifier
-            - Purchased_Coverage_Bundle: Predicted class (int, 0-9)
-    """
-    # Extract User_ID before dropping for prediction
     user_ids = df['User_ID'].copy()
     
-    # Get feature columns (exclude User_ID)
-    feature_cols = [col for col in df.columns if col != 'User_ID']
-    X = df[feature_cols]
+    X = df[FEATURE_COLUMNS]
     
-    # Generate predictions
     preds = model.predict(X)
     
-    # Create output DataFrame with required columns
-    predictions = pd.DataFrame({
+    return pd.DataFrame({
         'User_ID': user_ids,
         'Purchased_Coverage_Bundle': preds.astype(int)
     })
-    
-    return predictions
 
 
 # ----------------------------------------------------------------

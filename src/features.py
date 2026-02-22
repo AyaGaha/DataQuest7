@@ -6,92 +6,111 @@ and preparing it for model training and prediction.
 """
 
 import pandas as pd
+import numpy as np
 from typing import Tuple
 
 
-# Define categorical columns that need to be converted to category dtype
+# Categorical columns after feature pruning (no Region_Code, Policy_Start_Month)
 CATEGORICAL_COLUMNS = [
-    'Region_Code',
-    'Broker_Agency_Type', 
+    'Broker_Agency_Type',
     'Deductible_Tier',
     'Acquisition_Channel',
     'Payment_Schedule',
-    'Employment_Status',
-    'Policy_Start_Month'
+    'Employment_Status'
 ]
 
 TARGET_COLUMN = 'Purchased_Coverage_Bundle'
+
+MONTH_MAP = {
+    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4,
+    'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8,
+    'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+}
+
+
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add behavioral and risk-based engineered features.
+
+    New columns:
+    - Family_Size: total number of dependents
+    - Risk_Index: claims rate adjusted for claim-free years
+    - Policy_Engagement: policy complexity proxy
+    - Time_To_Convert: quote-to-bind speed ratio
+    - Income_Per_Dependent: financial capacity per dependent
+    - Loyalty_Score: existing policyholder loyalty signal
+    """
+    df = df.copy()
+
+    df['Family_Size'] = (
+        df['Adult_Dependents'] + df['Child_Dependents'] + df['Infant_Dependents']
+    )
+    df['Risk_Index'] = (
+        df['Previous_Claims_Filed'] / (df['Years_Without_Claims'] + 1)
+    )
+    df['Policy_Engagement'] = (
+        df['Policy_Amendments_Count'] + df['Custom_Riders_Requested']
+    )
+    df['Time_To_Convert'] = (
+        df['Days_Since_Quote'] / (df['Underwriting_Processing_Days'] + 1)
+    )
+    df['Income_Per_Dependent'] = (
+        df['Estimated_Annual_Income'] / (df['Family_Size'] + 1)
+    )
+    df['Loyalty_Score'] = (
+        df['Existing_Policyholder'] * df['Years_Without_Claims']
+    )
+
+    return df
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean and preprocess the input dataframe.
-    
-    This function performs the following operations:
-    - Drops Employer_ID (94% missing)
-    - Fills missing values for specific columns
-    - Converts categorical columns to category dtype for LightGBM
-    
-    Args:
-        df: Input pandas DataFrame with raw data
-        
-    Returns:
-        Cleaned pandas DataFrame ready for modeling
+
+    Operations:
+    - Drop Employer_ID, Broker_ID, Region_Code
+    - Fill missing values
+    - Cyclical encoding for Policy_Start_Month
+    - Behavioral feature engineering
+    - Convert categorical columns to category dtype
     """
     df = df.copy()
-    
-    # Drop Employer_ID - 94% missing, not useful
-    if 'Employer_ID' in df.columns:
-        df = df.drop(columns=['Employer_ID'])
-    
-    # Fill missing values
-    # Child_Dependents: fill with 0 (assumes no child dependents)
+
+    for col in ['Employer_ID', 'Broker_ID', 'Region_Code']:
+        if col in df.columns:
+            df = df.drop(columns=[col])
+
     if 'Child_Dependents' in df.columns:
         df['Child_Dependents'] = df['Child_Dependents'].fillna(0)
-    
-    # Region_Code: fill with "Unknown"
-    if 'Region_Code' in df.columns:
-        df['Region_Code'] = df['Region_Code'].fillna('Unknown')
-    
-    # Deductible_Tier: fill with "Unknown"
+
     if 'Deductible_Tier' in df.columns:
         df['Deductible_Tier'] = df['Deductible_Tier'].fillna('Unknown')
-    
-    # Acquisition_Channel: fill with "Unknown"
+
     if 'Acquisition_Channel' in df.columns:
         df['Acquisition_Channel'] = df['Acquisition_Channel'].fillna('Unknown')
-    
-    # Broker_ID: fill with -1 to indicate missing (numeric column)
-    if 'Broker_ID' in df.columns:
-        df['Broker_ID'] = df['Broker_ID'].fillna(-1)
-    
-    # Convert categorical columns to category dtype for LightGBM native handling
+
+    if 'Policy_Start_Month' in df.columns:
+        month_num = df['Policy_Start_Month'].map(MONTH_MAP).fillna(1)
+        df['month_sin'] = np.sin(2 * np.pi * month_num / 12)
+        df['month_cos'] = np.cos(2 * np.pi * month_num / 12)
+        df = df.drop(columns=['Policy_Start_Month'])
+
+    df = engineer_features(df)
+
     for col in CATEGORICAL_COLUMNS:
         if col in df.columns:
             df[col] = df[col].astype('category')
-    
+
     return df
 
 
 def split_features_target(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
     """
-    Split dataframe into features and target.
-    
-    Args:
-        df: Cleaned pandas DataFrame containing both features and target
-        
-    Returns:
-        Tuple of (X, y) where:
-            - X: Feature DataFrame (excludes User_ID and target)
-            - y: Target Series (Purchased_Coverage_Bundle)
+    Split dataframe into features (X) and target (y).
+
+    Excludes User_ID and Purchased_Coverage_Bundle from features.
     """
-    # Columns to exclude from features
     exclude_cols = ['User_ID', TARGET_COLUMN]
-    
-    # Get feature columns
     feature_cols = [col for col in df.columns if col not in exclude_cols]
-    
-    X = df[feature_cols]
-    y = df[TARGET_COLUMN]
-    
-    return X, y
+    return df[feature_cols], df[TARGET_COLUMN]
