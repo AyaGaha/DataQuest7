@@ -10,56 +10,76 @@
 
 
 # Import necessary libraries here
+import pandas as pd
+import joblib
+from src.features import clean_data
 
 
 def preprocess(df):
-    # Implement any preprocessing steps required for your model here.
-    # Return a Pandas DataFrame of the data
-    #
-    # Note: Don't drop the 'User_ID' column here.
-    # It will be used in the predict function to return the final predictions.
-
-    return df
+    """
+    Preprocess the input dataframe for prediction.
+    
+    This function:
+    - Calls clean_data to handle missing values and categorical encoding
+    - Drops target column if present (for training data passed during inference)
+    - Keeps User_ID for final prediction output
+    
+    Args:
+        df: Raw input pandas DataFrame
+        
+    Returns:
+        Preprocessed pandas DataFrame ready for model inference
+    """
+    # Clean the data using the shared cleaning function
+    df_clean = clean_data(df)
+    
+    # Drop target column if it exists (handles case where train data is passed)
+    if 'Purchased_Coverage_Bundle' in df_clean.columns:
+        df_clean = df_clean.drop(columns=['Purchased_Coverage_Bundle'])
+    
+    return df_clean
 
 
 def load_model():
-    model = None
-    # ------------------ MODEL LOADING LOGIC ------------------
-
-    # Inside this block, load your trained model.
-    # --- Example ---
-    # import joblib
-    # model = joblib.load('model.pkl')
-
-    # ------------------ END MODEL LOADING LOGIC ------------------
+    """
+    Load the trained model from disk.
+    
+    Returns:
+        Trained LightGBM model object
+    """
+    model = joblib.load('model.joblib')
     return model
 
 
 def predict(df, model):
-    predictions = None
-    # ------------------ PREDICTION LOGIC ------------------
-
-    # Inside this block, generate predictions using your model.
-    # This function should only contain prediction logic.
-    # It must be efficient and run within the time limits.
-    #
-    # You must return a Pandas DataFrame with exactly two columns:
-    #
-    #   User_ID,Purchased_Coverage_Bundle
-    #   USR_060868,7
-    #   USR_060869,2
-    #   USR_060870,4
-    #   ...
-    #
-    # --- Example ---
-    # import pandas as pd
-    # preds = model.predict(df.drop(columns=['User_ID']))
-    # predictions = pd.DataFrame({
-    #     'User_ID': df['User_ID'],
-    #     'Purchased_Coverage_Bundle': preds
-    # })
-
-    # ------------------ END PREDICTION LOGIC ------------------
+    """
+    Generate predictions using the trained model.
+    
+    Args:
+        df: Preprocessed pandas DataFrame (output of preprocess function)
+        model: Trained model object (output of load_model function)
+        
+    Returns:
+        pandas DataFrame with exactly two columns:
+            - User_ID: User identifier
+            - Purchased_Coverage_Bundle: Predicted class (int, 0-9)
+    """
+    # Extract User_ID before dropping for prediction
+    user_ids = df['User_ID'].copy()
+    
+    # Get feature columns (exclude User_ID)
+    feature_cols = [col for col in df.columns if col != 'User_ID']
+    X = df[feature_cols]
+    
+    # Generate predictions
+    preds = model.predict(X)
+    
+    # Create output DataFrame with required columns
+    predictions = pd.DataFrame({
+        'User_ID': user_ids,
+        'Purchased_Coverage_Bundle': preds.astype(int)
+    })
+    
     return predictions
 
 
